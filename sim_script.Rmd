@@ -1,0 +1,318 @@
+---
+title: "Corridor of stability analysis for GLMs"
+author: "Adam Finnemann"
+date: "August 14, 2017"
+---
+
+
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/cogsci/EM3/Assignment I/assignment1")
+
+library(pacman)
+
+p_load(tidyverse, stringr, lmerTest, MuMIn)
+
+#load sim.glmm 
+library(RCurl)
+options(RCurlOptions=list(cainfo=system.file("CurlSSL","cacert.pem",package="RCurl")))
+eval(expr=parse(text=getURL("https://raw.githubusercontent.com/pcdjohnson/sim.glmm/master/sim.glmm.R")))
+
+#Packages for multicore analysis
+
+library("foreach")
+library("doParallel")
+
+
+```
+
+
+Tutorial for sim.glmm found at: http://onlinelibrary.wiley.com/store/10.1111/2041-210X.12306/asset/supinfo/mee312306-sup-0001-AppendixS1.pdf?v=1&s=78fe53e1edea8fa3c45a9662f49f2434c3004169
+
+Data simulation playground:
+```{r}
+
+
+#number of visit
+visit_nr = 9
+
+mlu_grid<- expand.grid(Child.ID = 1:10000, Visit = 1:visit_nr)
+
+mlu_grid$Child.ID <- factor(paste("Child.ID", mlu_grid$Child.ID, sep = ""))
+
+
+mlu_grid <- arrange(mlu_grid, Child.ID)
+
+
+mlu_grid$Diagnosis <- factor(rep(c(rep("ASD",visit_nr), rep("TD",visit_nr))),
+                             levels= c("ASD", "TD"))
+
+
+#Creating covariance matrix for random intercepts and slopes based on autism data.
+
+
+#simulating data
+mlu_sim<- sim.glmm(design.data = mlu_grid,
+                   fixed.eff = list(intercept = 1.8,
+                                    Visit = 0.2,#c(Visit1 = 0.2, Visit2 = 0.4, Visit3 = 0.6, Visit4 = 0.8, Visit5 = 1, Visit6 = 1.2, Visit7 = 1.4, Visit8 = 1.6, Visit9 = 1.8),
+                                    Diagnosis = c(ASD = 0, TD = 0.5)),
+                   rand.V = list(Child.ID = covmat),
+                   distribution = "gaussian",
+                   SD = 0.3)
+
+```
+
+
+
+
+Function that takes randomly sampled df, fits modes and stores estimates of model.
+```{r}
+
+corEvol <- function(df, n.min=10, item_nr=9) {
+  #one cell for estimate of first 20 subjects, and 1 cell for each additional participant
+  res <- matrix(NA, nrow=length(seq(n.min*item_nr, nrow(df), by= item_nr)), ncol=4)
+  
+  
+  count = 0
+  
+  
+  for (i in seq(n.min*item_nr, nrow(df), by=item_nr)) {
+    
+    count = count + 1
+
+    
+    model_df <- df[1:i,]
+    
+    visit_diag <- lmer(response ~Visit + Diagnosis + (Visit|Child.ID),model_df)
+    
+    estimate <- summary(visit_diag)
+    
+    res[count, 1:4] <- c(n=i, estimate$coefficients[1], estimate$coefficients[2], estimate$coefficients[3])
+    
+
+  }
+  colnames(res) <- c("item_nr", rownames(estimate$coefficients)[1], rownames(estimate$coefficients)[2],rownames(estimate$coefficients)[3]) 	
+  return(res)	
+}
+```
+
+
+Simluating coeffs from data
+```{r}    
+
+popsize <- 100000	# size of population
+n.max <- 300		# maximum number of participants per sample
+n.min <- 20		# minimum sample size !!! HAS TO BE EQUAL TO VISIT LENGTH
+items <- c(5,15,50,100) #number of items per subject
+n_samples <- 5  #Number of samples per item i.e number of bootstrapped trajectories in Sch?nbrodt terminology.
+                
+Nr_of_cores = 2 #total number of samples will be cores * n_samples
+cl <- makeCluster(Nr_of_cores) 
+registerDoParallel(cl) # register the cluster
+
+
+
+#extracting covariance strcutre from autism data
+
+covmat_data <- read.csv("autism_data.csv", sep = ";")
+covmat_model <- lmer(CHI_MLU ~VISIT + Diagnosis + (1+VISIT|SUBJ),covmat_data)
+
+
+#extracting covariance structure of the trained model
+vc<-VarCorr(covmat_model) # variance component
+sigmaSubject <- as.numeric(attr(vc[[1]],"stddev")[1]) # random intercept by subject
+sigmaVisit <- as.numeric(attr(vc[[1]],"stddev")[2]) # random slope of visit over subject
+sigmaResiduals <- as.numeric(attr(vc,"sc"))
+sigmaCorrelation <- as.numeric(attr(vc[[1]],"correlation")[2])
+
+#forimg covariance matrix
+covmat<-matrix(c(sigmaSubject^2,
+                 sigmaCorrelation*sigmaSubject*sigmaVisit,
+                 sigmaCorrelation*sigmaSubject*sigmaVisit,
+                 sigmaVisit^2),nrow=2)
+rownames(covmat) <- colnames(covmat) <- c("intercept", "Visit")
+
+#Sett
+Intercept_val <- 2 #True mean of intercept
+Visit_val <- 0.2       #True mean effect of Visit 
+ASD_effect = 0     #True effect of diagnosis: ASD is 0, and TD is 0.5
+TD_effect = 0.5
+Distri = "gaussian"#Distribution of residuals
+SD_res = 0.5    # SD of residuals for Gaussian distribution
+               
+
+
+
+for (item in items) {
+  require(tidyverse)
+  print(paste("\nComputing next population at ", Sys.time()))
+  
+  ### Generating population 
+  
+  mlu_grid<- expand.grid(Child.ID = 1:popsize, Visit = 1:item)
+  
+  mlu_grid$Child.ID <- factor(paste("Child.ID", mlu_grid$Child.ID, sep = ""))
+  
+  
+  mlu_grid <- arrange(mlu_grid, Child.ID)
+  
+  
+  mlu_grid$Diagnosis <- factor(rep(c(rep("ASD",item), rep("TD",item))),
+                               levels= c("ASD", "TD"))
+
+  
+  #Simulating response values
+  mlu_sim<- sim.glmm(design.data = mlu_grid,
+                   fixed.eff = list(intercept = Intercept_val,
+                                    Visit = Visit_val,
+                                    Diagnosis = c(ASD = ASD_effect, TD = TD_effect)),
+                   rand.V = list(Child.ID = covmat),
+                   distribution = Distri,
+                   SD = SD_res)
+  
+  
+  #DF to store coefficients of each sample.
+  sample_df <- c()
+  
+  res = foreach(i = 1:n_samples, 
+              .combine = "cbind", 
+              .packages = "tidyverse") %dopar% {
+                # generate a bootstrap sample              
+                boot_dat <- engel[sample(1:nrow(engel), replace = TRUE), ]
+                # fit the model
+                fit1 <- rq(foodexp ~ income, tau = 0.5, data = boot_dat)
+                # return the coefficients
+                fit1$coef
+              }
+
+  
+  for (samp in 1:n_samples){
+    
+    
+    max_items <- n.max * item		#the length of the sample data frame, subjects * items
+    min_items <- n.min * item   #length of sample data frame at first calculation
+    visit_nr = item    # number of items per subject
+    
+    # DF of subjects to sample from
+    sample_people <- mlu_sim %>% 
+      filter(Visit == 1) 
+    
+    #Drawing random subjects from sample equal to max sample size n.max
+    sam_people <- sample_people[sample(1:nrow(sample_people), size=n.max, replace=F), ]	
+    
+    #Adding all trials for each sampled subject
+    sample_people <- mlu_sim %>% 
+      filter(mlu_sim$Child.ID %in% sam_people$Child.ID)
+    
+    
+    
+    #Estimates parameters for sample
+    result <- corEvol(sample_people, n.min = n.min, item_nr = item)
+    
+    #adding sample number to name of columns
+    colnames(result) <- c(paste("item_nr",samp, sep = ""), 
+                          paste("Intercept", samp,sep = ""), 
+                          paste("Visit", samp,sep = ""), 
+                          paste("DiagnosisTD", samp, sep = ""))
+    
+    sample_df <- cbind(sample_df, result)
+    
+  }
+  #assigning item nr to name of sample df
+  assign(paste("df_item_", item, sep = ""), sample_df)
+  
+}
+
+```
+
+
+
+
+Analyzing and plotting results
+```{r}
+
+
+overall <- cbind(df_item_5, df_item_10, df_item_15)
+
+overall %>% 
+  as.data.frame() %>% 
+  mutate(participants = (n.min:(n.min+nrow(sample_df)))) %>% 
+  gather(key, value, Intercept1, Intercept2, Intercept3,
+         Visit1, Visit2, Visit3, 
+         DiagnosisTD1, DiagnosisTD2, DiagnosisTD3) %>% 
+  mutate(key = as.factor(key)) %>% 
+  ggplot(aes(participants, value, color = key)) +
+  geom_line() +
+  geom_abline(intercept = c(1.8, 0.2, 0.5), slope = 0, color = c("blue", "red","yellow"), size = 1) +
+  scale_y_continuous(breaks = seq(-1,3, by = 0.25))
+  #facet_wrap(key~.)
+
+
+
+## Diagnosis plot
+
+#write.csv(sample_df, "7people_72Part_9items_mlu.csv")
+
+#sample_df <- read.csv("7people_72Part_9items_mlu.csv")
+
+sample_df %>% 
+  as.data.frame() %>% 
+  mutate(participants = 1:nrow(sample_df)) %>% 
+  gather(key, value, DiagnosisTD1, DiagnosisTD2, DiagnosisTD3, DiagnosisTD4, DiagnosisTD5,
+         DiagnosisTD6, DiagnosisTD7) %>% 
+  ggplot(aes(participants, value, color = key)) +
+  geom_line() +
+  geom_abline(intercept = 0.5, slope = 0, color = "blue")
+
+
+###visit plot
+
+sample_df %>% 
+  as.data.frame() %>% 
+  mutate(participants = 1:nrow(sample_df)) %>% 
+  gather(key, value, Visit1, Visit2, Visit3, Visit4, Visit5, Visit6, Visit7) %>% 
+  ggplot(aes(participants, value, color = key)) +
+  geom_line() +
+  geom_abline(intercept = 0.2, slope = 0, color = "blue")
+
+### Intercept plot
+
+sample_df %>% 
+  as.data.frame() %>% 
+  mutate(participants = 1:nrow(sample_df)) %>% 
+  gather(key, value, Intercept1, Intercept2, Intercept3, Intercept4, Intercept5, Intercept6, Intercept7) %>% 
+  ggplot(aes(participants, value, color = key)) +
+  geom_line() +
+  geom_abline(intercept = 1.8, slope = 0, color = "blue")
+
+
+####full plot
+sample_df %>% 
+  as.data.frame() %>% 
+  mutate(participants = 1:nrow(sample_df)) %>% 
+  gather(key, value, Intercept1, Intercept2, Intercept3, Intercept4, Intercept5, Intercept6, Intercept7,
+         Visit1, Visit2, Visit3, Visit4, Visit5,Visit6, Visit7,
+         DiagnosisTD1, DiagnosisTD2, DiagnosisTD3, DiagnosisTD4, DiagnosisTD5, DiagnosisTD6, DiagnosisTD7) %>% 
+  ggplot(aes(participants, value, color = key)) +
+  geom_line() +
+  geom_abline(intercept = c(1.8, 0.2, 0.5), slope = 0, color = c("blue", "red","yellow"), size = 1) +
+  scale_y_continuous(breaks = seq(-1,3, by = 0.25))
+
+
+
+quick_df <- sample_people[1:(20*9),]
+
+rest <- corEvol(quick_df, item_nr = 9 )
+
+rest %>%
+  as.data.frame() %>% 
+  mutate(participants = 1:nrow(rest)) %>% 
+  gather(key, value, `(Intercept)`, Visit, DiagnosisTD) %>% print
+ggplot(aes(participants, value, color = key)) +
+  geom_line() +
+  geom_abline(intercept = c(1.8,0.5,0.2), slope = c(0,0,0), color = c("red","green","blue"))
+
+#true value of intercept = 1.8
+#true value of Diagnosis. TD group = 0.5
+#true coefficient of visit slope = 0.2
+```
+
