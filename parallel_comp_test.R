@@ -1,14 +1,14 @@
-Nr_of_cores = 2 #total number of samples will be cores * n_samples
+Nr_of_cores = 3 #total number of samples will be cores * n_samples
 cl <- makeCluster(Nr_of_cores) 
 registerDoParallel(cl) # register the cluster
 
 popsize <- 100000	# size of population
 n.max <- 30		# maximum number of participants per sample
 n.min <- 20		# minimum sample size !!! HAS TO BE EQUAL TO VISIT LENGTH
-items <- c(5,15,50,100) #number of items per subject
+items <- 5 #number of items per subject
 n_samples <- 5  #Number of samples per item i.e number of bootstrapped trajectories in Sch?nbrodt terminology.
 
-setwd("~/cogsci/EM3/Assignment I/assignment1")
+setwd("~/Corridor_of_stability")
 covmat_data <- read.csv("autism_data.csv", sep = ";")
 covmat_model <- lmer(CHI_MLU ~VISIT + Diagnosis + (1+VISIT|SUBJ),covmat_data)
 
@@ -34,8 +34,7 @@ ASD_effect = 0     #True effect of diagnosis: ASD is 0, and TD is 0.5
 TD_effect = 0.5
 Distri = "gaussian"#Distribution of residuals
 SD_res = 0.5    # SD of residuals for Gaussian distribution
-item =5 
-
+item = 5
 
 
 print(paste("\nComputing next population at ", Sys.time()))
@@ -69,14 +68,13 @@ sample_df <- c()
 
 
 
+samp = 1
 
-
-res = foreach(i = 1, 
+cl <- makeCluster(3)
+registerDoParallel(cl)
+res <- foreach(i = 1:6, 
               .combine = "cbind", 
-              .packages = c("lmerTest","tidyverse")) %dopar% {
-                
-                
-                
+              .packages = c("lmerTest","tidyverse")) %do% {
                 
                 max_items <- n.max * item		#the length of the sample data frame, subjects * items
                 min_items <- n.min * item   #length of sample data frame at first calculation
@@ -96,19 +94,17 @@ res = foreach(i = 1,
                 
                 
                 #Estimates parameters for sample
-                result <- corEvol(sample_people, n.min = n.min, item_nr = item)
+                 result <- corEvol(sample_people, n.min = n.min, item_nr = item)
                 
                 
                 #adding sample number to name of columns
-                colnames(result) <- c(paste("item_nr",samp, sep = ""), 
-                                      paste("Intercept", samp,sep = ""), 
-                                      paste("Visit", samp,sep = ""), 
-                                      paste("DiagnosisTD", samp, sep = ""))
+                colnames(result) <- c(paste("item_nr",i, sep = ""), 
+                                      paste("Intercept", i,sep = ""), 
+                                      paste("Visit", i,sep = ""), 
+                                      paste("DiagnosisTD", i, sep = ""))
                 
-                sample_df <- cbind(sample_df, result)
+                result
                 
                 
-                #assigning item nr to name of sample df
-                assign(paste("df_item_", item, sep = ""), sample_df)
               }
               
