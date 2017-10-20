@@ -109,11 +109,8 @@ corEvol <- function(df, n.min=10, item_nr=9) {
     
     estimate <- summary(visit_diag)
     
-<<<<<<< HEAD
-    res[count, 1:6] <- c(n=i, estimate$coefficients[1], estimate$coefficients[2], estimate$coefficients[3], r.sq)
-=======
     res[count, 1:6] <- c(n=i, estimate$coefficients[1], estimate$coefficients[2], estimate$coefficients[3], r.squaredGLMM(visit_diag)[1],r.squaredGLMM(visit_diag)[2])
->>>>>>> def08fdcd61b2a8dc2566175356f3b9eb2d2a6e6
+
     
 
   }

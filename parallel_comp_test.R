@@ -3,10 +3,10 @@ cl <- makeCluster(Nr_of_cores)
 registerDoParallel(cl) # register the cluster
 
 popsize <- 100000	# size of population
-n.max <- 50		# maximum number of participants per sample
-n.min <- 20		# minimum sample size !!! HAS TO BE EQUAL TO VISIT LENGTH
+n.max <- 100		# maximum number of participants per sample
+n.min <- 15		# minimum sample size !!! HAS TO BE EQUAL TO VISIT LENGTH
 items <- 5 #number of items per subject
-n_samples <- 5  #Number of samples per item i.e number of bootstrapped trajectories in Sch?nbrodt terminology.
+n_samples <- 50  #Number of samples per item i.e number of bootstrapped trajectories in Sch?nbrodt terminology.
 
 setwd("~/Corridor_of_stability")
 covmat_data <- read.csv("autism_data.csv", sep = ";")
@@ -70,10 +70,8 @@ sample_df <- c()
 
 samp = 1
 
-cl <- makeCluster(3)
-registerDoParallel(cl)
 
-res <- foreach(i = 1:3, #samples needs to be replaced here
+res <- foreach(i = 1:n_samples, #samples needs to be replaced here
               .combine = "cbind", 
               .packages = c("lmerTest","tidyverse","MuMIn")) %dopar% {
                 
@@ -111,5 +109,7 @@ res <- foreach(i = 1:3, #samples needs to be replaced here
                 
               }
 
+write.csv(res, "sim_5item_51samples.csv")
+write.csv(res,"test.csv")
 stopCluster(cl)
               
