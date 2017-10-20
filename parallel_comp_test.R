@@ -72,9 +72,10 @@ samp = 1
 
 cl <- makeCluster(3)
 registerDoParallel(cl)
-res <- foreach(i = 1:6, 
+
+res <- foreach(i = 1:3, #samples needs to be replaced here
               .combine = "cbind", 
-              .packages = c("lmerTest","tidyverse")) %do% {
+              .packages = c("lmerTest","tidyverse","MuMIn")) %dopar% {
                 
                 max_items <- n.max * item		#the length of the sample data frame, subjects * items
                 min_items <- n.min * item   #length of sample data frame at first calculation
@@ -101,10 +102,14 @@ res <- foreach(i = 1:6,
                 colnames(result) <- c(paste("item_nr",i, sep = ""), 
                                       paste("Intercept", i,sep = ""), 
                                       paste("Visit", i,sep = ""), 
-                                      paste("DiagnosisTD", i, sep = ""))
+                                      paste("DiagnosisTD", i, sep = ""),
+                                      paste("R2m", i, sep = ""),
+                                      paste("R2c", i, sep = ""))
                 
                 result
                 
                 
               }
+
+stopCluster(cl)
               

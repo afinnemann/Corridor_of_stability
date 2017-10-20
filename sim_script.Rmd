@@ -43,6 +43,29 @@ mlu_grid$Child.ID <- factor(paste("Child.ID", mlu_grid$Child.ID, sep = ""))
 mlu_grid <- arrange(mlu_grid, Child.ID)
 
 
+#extracting covariance strcutre from autism data
+
+covmat_data <- read.csv("autism_data.csv", sep = ";")
+covmat_model <- lmer(CHI_MLU ~VISIT + Diagnosis + (1+VISIT|SUBJ),covmat_data)
+
+#extracting covariance structure of the trained model
+vc<-VarCorr(covmat_model) # variance component
+sigmaSubject <- as.numeric(attr(vc[[1]],"stddev")[1]) # random intercept by subject
+sigmaVisit <- as.numeric(attr(vc[[1]],"stddev")[2]) # random slope of visit over subject
+sigmaResiduals <- as.numeric(attr(vc,"sc"))
+sigmaCorrelation <- as.numeric(attr(vc[[1]],"correlation")[2])
+
+#forimg covariance matrix
+covmat<-matrix(c(sigmaSubject^2,
+                 sigmaCorrelation*sigmaSubject*sigmaVisit,
+                 sigmaCorrelation*sigmaSubject*sigmaVisit,
+                 sigmaVisit^2),nrow=2)
+rownames(covmat) <- colnames(covmat) <- c("intercept", "Visit")
+
+
+
+
+
 mlu_grid$Diagnosis <- factor(rep(c(rep("ASD",visit_nr), rep("TD",visit_nr))),
                              levels= c("ASD", "TD"))
 
@@ -64,12 +87,12 @@ mlu_sim<- sim.glmm(design.data = mlu_grid,
 
 
 
-Function that takes randomly sampled df, fits modes and stores estimates of model.
+Function, fits model to sample and keeps relevant parameters
 ```{r}
 
 corEvol <- function(df, n.min=10, item_nr=9) {
   #one cell for estimate of first 20 subjects, and 1 cell for each additional participant
-  res <- matrix(NA, nrow=length(seq(n.min*item_nr, nrow(df), by= item_nr)), ncol=4)
+  res <- matrix(NA, nrow=length(seq(n.min*item_nr, nrow(df), by= item_nr)), ncol=6)
   
   
   count = 0
@@ -86,11 +109,11 @@ corEvol <- function(df, n.min=10, item_nr=9) {
     
     estimate <- summary(visit_diag)
     
-    res[count, 1:4] <- c(n=i, estimate$coefficients[1], estimate$coefficients[2], estimate$coefficients[3])
+    res[count, 1:6] <- c(n=i, estimate$coefficients[1], estimate$coefficients[2], estimate$coefficients[3], r.squaredGLMM(visit_diag)[1],r.squaredGLMM(visit_diag)[2])
     
 
   }
-  colnames(res) <- c("item_nr", rownames(estimate$coefficients)[1], rownames(estimate$coefficients)[2],rownames(estimate$coefficients)[3]) 	
+  colnames(res) <- c("item_nr", rownames(estimate$coefficients)[1], rownames(estimate$coefficients)[2],rownames(estimate$coefficients)[3], "R2m","R2c") 	
   return(res)	
 }
 ```
