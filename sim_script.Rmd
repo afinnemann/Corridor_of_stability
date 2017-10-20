@@ -69,7 +69,7 @@ Function that takes randomly sampled df, fits modes and stores estimates of mode
 
 corEvol <- function(df, n.min=10, item_nr=9) {
   #one cell for estimate of first 20 subjects, and 1 cell for each additional participant
-  res <- matrix(NA, nrow=length(seq(n.min*item_nr, nrow(df), by= item_nr)), ncol=4)
+  res <- matrix(NA, nrow=length(seq(n.min*item_nr, nrow(df), by= item_nr)), ncol=6)
   
   
   count = 0
@@ -86,7 +86,7 @@ corEvol <- function(df, n.min=10, item_nr=9) {
     
     estimate <- summary(visit_diag)
     
-    res[count, 1:4] <- c(n=i, estimate$coefficients[1], estimate$coefficients[2], estimate$coefficients[3])
+    res[count, 1:6] <- c(n=i, estimate$coefficients[1], estimate$coefficients[2], estimate$coefficients[3], r.sq)
     
 
   }

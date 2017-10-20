@@ -3,7 +3,7 @@ cl <- makeCluster(Nr_of_cores)
 registerDoParallel(cl) # register the cluster
 
 popsize <- 100000	# size of population
-n.max <- 30		# maximum number of participants per sample
+n.max <- 50		# maximum number of participants per sample
 n.min <- 20		# minimum sample size !!! HAS TO BE EQUAL TO VISIT LENGTH
 items <- 5 #number of items per subject
 n_samples <- 5  #Number of samples per item i.e number of bootstrapped trajectories in Sch?nbrodt terminology.
